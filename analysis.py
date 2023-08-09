@@ -183,7 +183,7 @@ class System():
         """"""
         if f == 0:
             f = self.get_SNR_freq_cutoff()
-        snr = np.array([])
+        snr = []
         for dat in self.get_data()[:]:
             peaks = np.array([])
             rms = np.array([])
@@ -196,7 +196,7 @@ class System():
             for s in dat.collection[1:]:
                 peaks = np.append(peaks, max(s.time_gate(tmin = 4e-4, tmax = 5e-4)[1]))
                 rms = np.append(rms, np.std(s.time_gate(tmin = 1.7e-4, tmax = 4e-4)[1]))
-            snr = np.append(snr, np.mean(peaks / rms))
+            snr.append(np.mean(peaks / rms))
             if self.get_name()[:3] == "mic":
                 dat.set_collection("Y")
                 dat.apply("correct", response = mic_response, recollect = True)
@@ -208,15 +208,13 @@ class System():
         """"""
         self.__SNR_at_cutoff = snr
         return None
-    def get_SNR_at_cutoff(self) -> np.array([]):
+    def get_SNR_at_cutoff(self) -> list:
         """"""
         return self.__SNR_at_cutoff
 
     def reset_SNR_vs_freq(self) -> None:
         """"""
-        self.__SNR_vs_freq = np.empty([len(self.get_SNR_freq_range())], dtype=list)
-        for i in range(len(self.__SNR_vs_freq)):
-            self.__SNR_vs_freq[i] = np.array([])
+        self.__SNR_vs_freq = []
         return None
     def calc_SNR_vs_freq(self, freq = [0, 0], bins = False) -> None:
         """"""
@@ -227,8 +225,9 @@ class System():
         snr = []
         for i in range(len(freq)):
             snr = self.calc_SNR_at_cutoff(freq[i], bins)
-            self.__SNR_vs_freq[i] = np.append(self.__SNR_vs_freq[i], snr)
-        self.__SNR_vs_freq = np.flip(self.__SNR_vs_freq)
+            self.__SNR_vs_freq.append(snr)
+        self.__SNR_vs_freq.reverse()
+        self.__SNR_vs_freq = np.array(self.__SNR_vs_freq)
         return None
     def get_SNR_vs_freq(self) -> np.array([]):
         """"""
