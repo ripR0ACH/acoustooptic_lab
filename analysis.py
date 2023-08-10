@@ -188,14 +188,14 @@ class System():
             peaks = np.array([])
             rms = np.array([])
             if bins:
-                N = dat.r / (2 * f)
+                N = int(dat.r / (2 * f))
                 dat.apply("bin_average", Npts = N, inplace = True)
             else:
                 dat.apply("lowpass", cutoff = f, inplace = True)
-            self.local_detrend(dat, 1.7e-4, 4e-4, True)
+            self.local_detrend(dat, 1.7e-4, 3.5e-4, True)
             for s in dat.collection[1:]:
-                peaks = np.append(peaks, max(s.time_gate(tmin = 4e-4, tmax = 5e-4)[1]))
-                rms = np.append(rms, np.std(s.time_gate(tmin = 1.7e-4, tmax = 4e-4)[1]))
+                peaks = np.append(peaks, max(s.time_gate(tmin = 3.5e-4, tmax = 5e-4)[1]))
+                rms = np.append(rms, np.std(s.time_gate(tmin = 1.7e-4, tmax = 3.5e-4)[1]))
             snr.append(np.mean(peaks / rms))
             if self.get_name()[:3] == "mic":
                 dat.set_collection("Y")
@@ -222,11 +222,10 @@ class System():
             freq = self.get_SNR_freq_range()
         else:
             freq = np.linspace(freq[0], freq[1], self.get_SNR_resolution())
-        snr = []
         for i in range(len(freq)):
-            snr = self.calc_SNR_at_cutoff(freq[i], bins)
-            self.__SNR_vs_freq.append(snr)
-        self.__SNR_vs_freq.reverse()
+            self.__SNR_vs_freq.append(self.calc_SNR_at_cutoff(freq[i], bins))
+#         if self.get_name()[:3] != "mic":
+#             self.__SNR_vs_freq.reverse()
         self.__SNR_vs_freq = np.array(self.__SNR_vs_freq)
         return None
     def get_SNR_vs_freq(self) -> np.array([]):
