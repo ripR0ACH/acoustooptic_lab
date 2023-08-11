@@ -165,14 +165,23 @@ class System():
         """"""
         return self.__SNR_freq_range
 
-    def local_detrend(self, col, tmin = None, tmax = None, inplace = False) -> None:
+    def local_detrend(self, col = [], tmin = None, tmax = None, inplace = False) -> None:
         """"""
-        for c in col.collection:
-            t, x = c.time_gate(tmin = tmin, tmax = tmax)
-            x_bar = np.mean(x)
-            m, b = np.polyfit(t, x, 1)
-            if inplace:
-                c.x = c.x - (m * c.t) - b
+        if col == []:
+            for d in self.get_data():
+                for c in d.collection:
+                    t, x = c.time_gate(tmin = tmin, tmax = tmax)
+                    x_bar = np.mean(x)
+                    m, b = np.polyfit(t, x, 1)
+                    if inplace:
+                        c.x = c.x - (m * c.t) - b
+        else:
+            for c in col.collection:
+                t, x = c.time_gate(tmin = tmin, tmax = tmax)
+                x_bar = np.mean(x)
+                m, b = np.polyfit(t, x, 1)
+                if inplace:
+                    c.x = c.x - (m * c.t) - b
         return None
 
     def reset_SNR_at_cutoff(self) -> None:
@@ -185,24 +194,25 @@ class System():
             f = self.get_SNR_freq_cutoff()
         snr = []
         for dat in self.get_data()[:]:
-            peaks = np.array([])
-            rms = np.array([])
-            if bins:
-                N = int(dat.r / (2 * f))
-                dat.apply("bin_average", Npts = N, inplace = True)
-            else:
-                dat.apply("lowpass", cutoff = f, inplace = True)
-            self.local_detrend(dat, 1.7e-4, 3.5e-4, True)
-            for s in dat.collection[1:]:
-                peaks = np.append(peaks, max(s.time_gate(tmin = 3.5e-4, tmax = 5e-4)[1]))
-                rms = np.append(rms, np.std(s.time_gate(tmin = 1.7e-4, tmax = 3.5e-4)[1]))
-            snr.append(np.mean(peaks / rms))
             if self.get_name()[:3] == "mic":
                 dat.set_collection("Y")
-                dat.apply("correct", response = mic_response, recollect = True)
+                dat.apply("correct", response = mic_response, recollect = True)  
+                # had to remove mic correction because it was causing a  
+                # ringing to appear in signals after lowpass or bin average
             else:
                 dat.set_collection("X")
                 dat.apply("calibrate", cal = -1, inplace = True)
+            peaks = np.array([])
+            rms = np.array([])
+            if bins:
+                dat.apply("bin_average", Npts = int(dat.r / (2 * f)), inplace = True)
+            else:
+                dat.apply("lowpass", cutoff = f, inplace = True)
+            self.local_detrend(dat, 0, 4e-4, True)
+            for s in dat.collection[1:]:
+                peaks = np.append(peaks, np.abs(max(s.time_gate(tmin = 3.5e-4, tmax = 5e-4)[1])))
+                rms = np.append(rms, np.std(s.time_gate(tmin = 2e-4, tmax = 3.5e-4)[1]))
+            snr.append(np.mean(peaks / rms))
         return snr
     def set_SNR_at_cutoff(self, snr) -> None:
         """"""
@@ -224,8 +234,6 @@ class System():
             freq = np.linspace(freq[0], freq[1], self.get_SNR_resolution())
         for i in range(len(freq)):
             self.__SNR_vs_freq.append(self.calc_SNR_at_cutoff(freq[i], bins))
-#         if self.get_name()[:3] != "mic":
-#             self.__SNR_vs_freq.reverse()
         self.__SNR_vs_freq = np.array(self.__SNR_vs_freq)
         return None
     def get_SNR_vs_freq(self) -> np.array([]):
