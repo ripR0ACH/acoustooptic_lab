@@ -4,7 +4,8 @@ import sys
 sys.path.append("../../lhillber/brownian/src")
 from time_series import CollectionTDMS as ctdms
 from acoustic_entrainment import mic_response
-from multiprocessing.dummy import Pool as ThreadPool
+import time
+import threading
 
 class System():
 
@@ -219,6 +220,7 @@ class System():
                 rms = np.append(rms, np.std(s.time_gate(tmin = 2e-4, tmax = 3.5e-4)[1]))
             snr.append(np.mean(peaks / rms))
             self.set_data(ind = i)
+        # time.sleep(0.1)
         return snr
     def set_SNR_at_cutoff(self, snr) -> None:
         """"""
@@ -238,7 +240,12 @@ class System():
             freq = self.get_SNR_freq_range()
         else:
             freq = np.linspace(freq[0], freq[1], self.get_SNR_resolution())
+        # threads = []
         for i in range(len(freq)):
+            # threads.append(threading.Thread(target = self.calc_SNR_at_cutoff, args = (freq[i], bins, lowpass)))
+            # threads[i].start()
+            # threads[i].join()
+            # self.__SNR_vs_freq.append(np.array(threads).flatten())
             self.__SNR_vs_freq.append(self.calc_SNR_at_cutoff(freq[i], bins, lowpass))
         self.__SNR_vs_freq = np.array(self.__SNR_vs_freq)
         return None
