@@ -1,11 +1,52 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.special import erfinv
 import sys
 sys.path.append("../../lhillber/brownian/src")
 from time_series import CollectionTDMS as ctdms
 from acoustic_entrainment import mic_response
 import time
 import threading
+
+def graph_systems(systems = [], title = "", save = False) -> None:
+    import matplotlib.pyplot as plt
+    plt.rcParams["figure.figsize"] = (54, 15)
+    fig, ax = plt.subplots(2, 9)
+    for s in systems:
+        ax = ax.flatten()
+        fig.suptitle("setups vs frequency (strong shot and phi 82-160)")
+        for i in range(len(s.get_SNR_vs_freq()[0])):
+            if i == 0:
+                ax[i].set_title("Strong shot")
+                ax[i].plot(s.get_SNR_freq_range(), s.get_SNR_vs_freq()[:, i], label = s.get_name())
+                ax[i].set_ylabel("SNR")
+                ax[i].set_xlabel("frequency")
+            else:
+                ax[i].set_title("Phi " + str(s.get_phis()[i - 1]))
+                ax[i].plot(s.get_SNR_freq_range(), s.get_SNR_vs_freq()[:, i], label = s.get_name())
+                ax[i].set_ylabel("SNR")
+                ax[i].set_xlabel("frequency")
+    fig.tight_layout(pad = 1.5)
+    ax[0].legend()
+    if save:
+        fig.savefig(title)
+    plt.show()
+    return None
+
+def phi(p):
+    return np.sqrt(2) * erfinv(2 * p - 1)
+
+def expected_max(N):
+    mun = phi(1 - 1 / N)
+    sigman = phi(1 - 1 / (N * np.e)) - mun
+    return mun + sigman * 0.577
+    
+
+def std_max(N, mu):
+    mun = phi(1 - 1 / N) + mu
+    sigman = phi(1 - 1 / (N * np.e)) - mun
+    return sigman * np.pi * np.sqrt(1/6)
+    
 
 class System():
 
@@ -18,7 +59,7 @@ class System():
         self.set_SNR_resolution(SNR_resolution)
         self.set_SNR_freq_cutoff(SNR_freq_cut)
         self.set_SNR_freq_range(SNR_freq_range)
-        self.set_SNR_at_cutoff(self.calc_SNR_at_cutoff())
+        self.set_SNR_at_cutoff(self.calc_SNR_at_cutoff(bins = True, lowpass = True))
         self.reset_SNR_vs_freq()
 
     def get_name(self) -> str:
@@ -218,9 +259,8 @@ class System():
             for s in self.__data[i].collection[1:]:
                 peaks = np.append(peaks, np.abs(max(s.time_gate(tmin = 3.5e-4, tmax = 5e-4)[1])))
                 rms = np.append(rms, np.std(s.time_gate(tmin = 2e-4, tmax = 3.5e-4)[1]))
-            snr.append(np.mean(peaks / rms))
+            snr.append(np.mean(peaks / (rms * expected_max(len(s.time_gate(tmin = 2e-4, tmax = 3.5e-4)[1])))))
             self.set_data(ind = i)
-        # time.sleep(0.1)
         return snr
     def set_SNR_at_cutoff(self, snr) -> None:
         """"""
