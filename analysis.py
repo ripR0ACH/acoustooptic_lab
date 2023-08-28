@@ -111,7 +111,7 @@ class System():
         """
         return self.__data
 
-    def set_data(self, df = [], ind = 0) -> None:
+    def set_data(self, df = [], ind = 0, mic_correct = False) -> None:
         """
         
         set_data sets the data collections for every data file provided for the system.
@@ -125,18 +125,22 @@ class System():
                 self.__data[d] = ctdms(df[d])
                 if self.get_name()[:3] == "mic":
                     self.__data[d].set_collection("Y")
-                    self.__data[d].apply("correct", response = mic_response, recollect = True)
+                    if mic_correct:
+                        self.__data[d].apply("correct", response = mic_response, recollect = True)
                 else:
                     self.__data[d].set_collection("X")
-                    self.__data[d].apply("calibrate", cal = -1, inplace = True)
+                    if self.get_name()[:] == "sagnac":
+                        self.__data[d].apply("calibrate", cal = -1, inplace = True)
         else:
             self.__data[ind] = ctdms(self.get_df()[ind])
             if self.get_name()[:3] == "mic":
                 self.__data[ind].set_collection("Y")
-                self.__data[ind].apply("correct", response = mic_response, recollect = True)
+                if mic_correct:
+                    self.__data[ind].apply("correct", response = mic_response, recollect = True)
             else:
                 self.__data[ind].set_collection("X")
-                self.__data[ind].apply("calibrate", cal = -1, inplace = True)
+                if self.get_name()[:] == "sagnac":
+                    self.__data[ind].apply("calibrate", cal = -1, inplace = True)
         return None
 
     def get_power(self) -> int:
