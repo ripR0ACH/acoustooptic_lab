@@ -8,6 +8,43 @@ from acoustic_entrainment import mic_response
 import time
 import threading
 
+def calc_cal_factor(l_col, m_col, deviation):
+    """
+    
+    calc_cal_factor calculates the calibration factor for an individual
+    shot in a collection array. Calibration is to the microphone data
+    which we have a pretty accurate mV/Pa conversion.
+    :param l_col: laser collection object for a single shot.
+    :param m_col: microphone collection object for a single shot.
+    :param deviation: the number of points to each side of the trough 
+                      that the calibration is to include in its calculation.
+    :return: calibration factor for a shot.
+    
+    """
+    def find_nearest(array, value):
+        return (np.abs(np.asarray(array) - value)).argmin()
+    
+    m_trough = np.where(m_col.x == min(m_col.time_gate(tmin = 3.5e-4, tmax = 5e-4)[1]))[0][0]
+    l_trough = find_nearest(l_col.t, m_col.t[m_trough])
+    if deviation != 0:
+        return np.mean(m_col.x[m_trough - deviation : m_trough + deviation] / l_col.x[l_trough - deviation : l_trough + deviation])
+    return m_col.x[m_trough] / l_col.x[l_trough]
+
+def mic_tau_shift(s1, s2, dat_i, col_i, filter = False) -> float: 
+    # assuming s1 will always be laser and s2 will always be microphone
+    # also assume that the data will be preprocessed at this point:
+    # - the data must already be detrended
+    # - the data doesn't have to be lowpassed or bin_averaged, but it can be beforehand
+    x0 = []
+    for s in [s1, s2]:
+        c = s.get_data()[dat_i].collection[col_i]
+        mx = c.t[np.where(c.x == max(c.time_gate(tmin = 3.5e-4, tmax = 5e-4)[1]))[0][0]]
+        mn = c.t[np.where(c.x == min(c.time_gate(tmin = 3.5e-4, tmax = 5e-4)[1]))[0][0]]
+        x = [c.time_gate(tmin = mx, tmax = mn)[0][np.where(np.diff(np.sign(c.time_gate(tmin = mx, tmax = mn)[1])))[0][0]], c.time_gate(tmin = mx, tmax = mn)[0][np.where(np.diff(np.sign(c.time_gate(tmin = mx, tmax = mn)[1])))[0][0] + 1]]
+        y = [c.x[np.where(c.t == x[0])[0][0]], c.x[np.where(c.t == x[1])[0][0]]]
+        x0.append(x[0] - y[0] * ((x[1] - x[0]) / (y[1] - y[0])))
+    return x0[1] - x0[0]
+
 def graph_systems(systems = [], title = "", save = False) -> None:
     import matplotlib.pyplot as plt
     plt.rcParams["figure.figsize"] = (54, 15)
@@ -111,7 +148,7 @@ class System():
         """
         return self.__data
 
-    def set_data(self, df = [], ind = 0) -> None:
+    def set_data(self, df = [], ind = 0, mic_correct = True) -> None:
         """
         
         set_data sets the data collections for every data file provided for the system.
@@ -125,18 +162,22 @@ class System():
                 self.__data[d] = ctdms(df[d])
                 if self.get_name()[:3] == "mic":
                     self.__data[d].set_collection("Y")
-                    self.__data[d].apply("correct", response = mic_response, recollect = True)
+                    if mic_correct:
+                        self.__data[d].apply("correct", response = mic_response, recollect = True)
                 else:
                     self.__data[d].set_collection("X")
-                    self.__data[d].apply("calibrate", cal = -1, inplace = True)
+                    if self.get_name()[:] == "sagnac":
+                        self.__data[d].apply("calibrate", cal = -1, inplace = True)
         else:
             self.__data[ind] = ctdms(self.get_df()[ind])
             if self.get_name()[:3] == "mic":
                 self.__data[ind].set_collection("Y")
-                self.__data[ind].apply("correct", response = mic_response, recollect = True)
+                if mic_correct:
+                    self.__data[ind].apply("correct", response = mic_response, recollect = True)
             else:
                 self.__data[ind].set_collection("X")
-                self.__data[ind].apply("calibrate", cal = -1, inplace = True)
+                if self.get_name()[:] == "sagnac":
+                    self.__data[ind].apply("calibrate", cal = -1, inplace = True)
         return None
 
     def get_power(self) -> int:
@@ -159,10 +200,10 @@ class System():
         self.__power = p
         return None
 
-    def get_SNR_freq_cutoff(self) -> tuple:
+    def get_SNR_freq_cutoff(self) -> float:
         """
         
-        get_SNR_freq_cutoffs gets the frequency cutoffs range.
+        get_SNR_freq_cutoffs gets the frequency cutoff.
         :return: tuple containing the starting and ending frequency of the cutoffs.
         
         """
@@ -280,12 +321,7 @@ class System():
             freq = self.get_SNR_freq_range()
         else:
             freq = np.linspace(freq[0], freq[1], self.get_SNR_resolution())
-        # threads = []
         for i in range(len(freq)):
-            # threads.append(threading.Thread(target = self.calc_SNR_at_cutoff, args = (freq[i], bins, lowpass)))
-            # threads[i].start()
-            # threads[i].join()
-            # self.__SNR_vs_freq.append(np.array(threads).flatten())
             self.__SNR_vs_freq.append(self.calc_SNR_at_cutoff(freq[i], bins, lowpass))
         self.__SNR_vs_freq = np.array(self.__SNR_vs_freq)
         return None

@@ -26,10 +26,11 @@ def calc_cal_factor(l_col, m_col, deviation):
     
     m_trough = np.where(m_col.x == min(m_col.time_gate(tmin = 3.5e-4, tmax = 5e-4)[1]))[0][0]
     l_trough = find_nearest(l_col.t, m_col.t[m_trough])
-    
-    return np.mean(m_col.x[m_trough - deviation : m_trough + deviation] / l_col.x[l_trough - deviation : l_trough + deviation])
+    if deviation != 0:
+        return np.mean(m_col.x[m_trough - deviation : m_trough + deviation] / l_col.x[l_trough - deviation : l_trough + deviation])
+    return m_col.x[m_trough] / l_col.x[l_trough]
 
-def mic_tau_shift(s1, s2, dat_i, col_i, cutoff = 0, filter = False) -> float: 
+def mic_tau_shift(s1, s2, dat_i, col_i, filter = False) -> float: 
     # assuming s1 will always be laser and s2 will always be microphone
     # also assume that the data will be preprocessed at this point:
     # - the data must already be detrended
@@ -147,7 +148,7 @@ class System():
         """
         return self.__data
 
-    def set_data(self, df = [], ind = 0, mic_correct = False) -> None:
+    def set_data(self, df = [], ind = 0, mic_correct = True) -> None:
         """
         
         set_data sets the data collections for every data file provided for the system.
@@ -199,10 +200,10 @@ class System():
         self.__power = p
         return None
 
-    def get_SNR_freq_cutoff(self) -> tuple:
+    def get_SNR_freq_cutoff(self) -> float:
         """
         
-        get_SNR_freq_cutoffs gets the frequency cutoffs range.
+        get_SNR_freq_cutoffs gets the frequency cutoff.
         :return: tuple containing the starting and ending frequency of the cutoffs.
         
         """
@@ -320,12 +321,7 @@ class System():
             freq = self.get_SNR_freq_range()
         else:
             freq = np.linspace(freq[0], freq[1], self.get_SNR_resolution())
-        # threads = []
         for i in range(len(freq)):
-            # threads.append(threading.Thread(target = self.calc_SNR_at_cutoff, args = (freq[i], bins, lowpass)))
-            # threads[i].start()
-            # threads[i].join()
-            # self.__SNR_vs_freq.append(np.array(threads).flatten())
             self.__SNR_vs_freq.append(self.calc_SNR_at_cutoff(freq[i], bins, lowpass))
         self.__SNR_vs_freq = np.array(self.__SNR_vs_freq)
         return None
