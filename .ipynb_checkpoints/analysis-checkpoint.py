@@ -87,7 +87,7 @@ def std_max(N, mu):
 
 class System():
 
-    def __init__(self, name = "", data_files = [], power = 19, SNR_freq_cut = 0, phis = [], SNR_resolution = 10, SNR_freq_range = [10000, 2e6]) -> None:
+    def __init__(self, name = "", data_files = [], power = 19, SNR_freq_cut = 0, phis = [], SNR_resolution = 10, SNR_freq_range = [10000, 2e6], SNR = True) -> None:
         self.set_name(name)
         self.set_df(np.array(data_files))
         self.set_data(self.__df)
@@ -96,7 +96,8 @@ class System():
         self.set_SNR_resolution(SNR_resolution)
         self.set_SNR_freq_cutoff(SNR_freq_cut)
         self.set_SNR_freq_range(SNR_freq_range)
-        self.set_SNR_at_cutoff(self.calc_SNR_at_cutoff(bins = True, lowpass = True))
+        if SNR:
+            self.set_SNR_at_cutoff(self.calc_SNR_at_cutoff(bins = True, lowpass = True))
         self.reset_SNR_vs_freq()
 
     def get_name(self) -> str:
