@@ -149,7 +149,7 @@ class System():
         """
         return self.__data
 
-    def set_data(self, df = [], ind = 0, mic_correct = True) -> None:
+    def set_data(self, df = [], ind = 0, mic_correct = False) -> None:
         """
         
         set_data sets the data collections for every data file provided for the system.
