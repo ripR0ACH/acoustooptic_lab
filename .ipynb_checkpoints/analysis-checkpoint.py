@@ -8,6 +8,30 @@ from acoustic_entrainment import mic_response
 import time
 import threading
 
+def mic_correct(c, taps = 151, lfs = 0.68e-3) -> (list, list):
+    """
+    mic_correct uses the impulse response function of the microphone
+    to correct the signal using a digital filter (scipy.signal.filtfilt).
+    :param c: collection object of TDMS object.
+    :param lfs: lfs of microphone (provided by manufacturer).
+    :return: list of times of the collection data and 
+             list of corrected signal of the collection data.
+    """
+    import acoustic_entrainment
+    import scipy.signal as sig
+    import numpy as np
+    # creating array of gain values using acoustic_entrainment.dBs_orig
+    gains = lfs * 10 ** (acoustic_entrainment.dBs_orig / 20)
+    # making the filter using sig.firwin2
+    # 1st value provided is the number of taps for the filter
+    # 2nd value is the range of frequencies for the filter -- specified in acoustic_entrainment
+    # 3rd value is the array of gains created above
+    # 4th value is the maximum frequency times two
+    # this filter is also converted into a minimum phase filter (sig.minimum_phase)
+    # lastly, the filter is translated into its inverse using ifft and 1 / fft
+    filter = np.real(np.fft.ifft(1 / np.fft.fft(sig.minimum_phase(sig.firwin2(taps, np.r_[0, acoustic_entrainment.fs_orig], np.r_[0, gains], fs = 2 * acoustic_entrainment.fs_orig[-1])))))
+    return c.t, sig.filtfilt(filter, [1], c.x)
+
 def calc_cal_factor(l_col, m_col, deviation):
     """
     
@@ -30,7 +54,16 @@ def calc_cal_factor(l_col, m_col, deviation):
         return np.mean(m_col.x[m_trough - deviation : m_trough + deviation] / l_col.x[l_trough - deviation : l_trough + deviation])
     return m_col.x[m_trough] / l_col.x[l_trough]
 
-def mic_tau_shift(s1, s2, dat_i, col_i, filter = False) -> float: 
+def calc_calibration_factors(laser, mic, dat_i):
+    cals = []
+    for col_i in range(1, len(laser.get_data()[dat_i].collection)):
+        t = mic_tau_shift(laser, mic, dat_i, col_i)
+        mic.get_data()[dat_i].apply("shift", tau = t, inplace = True)
+        cals.append(calc_cal_factor(laser.get_data()[dat_i].collection[col_i], mic.get_data()[dat_i].collection[col_i], 0))
+        mic.get_data()[dat_i].apply("shift", tau = -t, inplace = True)
+    return cals
+
+def mic_tau_shift(s1, s2, dat_i, col_i) -> float: 
     # assuming s1 will always be laser and s2 will always be microphone
     # also assume that the data will be preprocessed at this point:
     # - the data must already be detrended
@@ -38,8 +71,12 @@ def mic_tau_shift(s1, s2, dat_i, col_i, filter = False) -> float:
     x0 = []
     for s in [s1, s2]:
         c = s.get_data()[dat_i].collection[col_i]
-        mx = c.t[np.where(c.x == max(c.time_gate(tmin = 3.5e-4, tmax = 5e-4)[1]))[0][0]]
-        mn = c.t[np.where(c.x == min(c.time_gate(tmin = 3.5e-4, tmax = 5e-4)[1]))[0][0]]
+        if s.get_name()[:3] == "mic":
+            mx = c.t[np.where(c.x == np.max(c.time_gate(tmin = 3.5e-4, tmax = 5e-4)[1]))[0][0]]
+            mn = c.t[np.where(c.x == np.min(c.time_gate(tmin = 3.5e-4, tmax = 5e-4)[1]))[0][0]]
+        else:
+            mx = c.t[np.where(c.x == np.max(c.time_gate(tmin = 4.4e-4, tmax = 4.6e-4)[1]))[0][0]]
+            mn = c.t[np.where(c.x == np.min(c.time_gate(tmin = 4.4e-4, tmax = 4.6e-4)[1]))[0][0]]
         x = [c.time_gate(tmin = mx, tmax = mn)[0][np.where(np.diff(np.sign(c.time_gate(tmin = mx, tmax = mn)[1])))[0][0]], c.time_gate(tmin = mx, tmax = mn)[0][np.where(np.diff(np.sign(c.time_gate(tmin = mx, tmax = mn)[1])))[0][0] + 1]]
         y = [c.x[np.where(c.t == x[0])[0][0]], c.x[np.where(c.t == x[1])[0][0]]]
         x0.append(x[0] - y[0] * ((x[1] - x[0]) / (y[1] - y[0])))
