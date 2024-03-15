@@ -47,7 +47,6 @@ def calc_cal_factor(l_col, m_col, deviation):
     """
     def find_nearest(array, value):
         return (np.abs(np.asarray(array) - value)).argmin()
-    
     m_trough = np.where(m_col.x == min(m_col.time_gate(tmin = 3.5e-4, tmax = 5e-4)[1]))[0][0]
     l_trough = find_nearest(l_col.t, m_col.t[m_trough])
     if deviation != 0:
@@ -124,7 +123,7 @@ def std_max(N, mu):
 
 class System():
 
-    def __init__(self, name = "", data_files = [], power = 19, SNR_freq_cut = 0, phis = [], SNR_resolution = 10, SNR_freq_range = [10000, 2e6], SNR = True) -> None:
+    def __init__(self, name = "", data_files = [], power = 19, SNR_freq_cut = 0, phis = [], SNR_resolution = 10, SNR_freq_range = [10000, 2e6], SNR = False) -> None:
         self.set_name(name)
         self.set_df(np.array(data_files))
         self.set_data(self.__df)
@@ -186,7 +185,7 @@ class System():
         """
         return self.__data
 
-    def set_data(self, df = [], ind = 0, mic_correct = False) -> None:
+    def set_data(self, df = [], ind = 0, mic_correct = False, tmin = None, tmax = None) -> None:
         """
         
         set_data sets the data collections for every data file provided for the system.
@@ -199,21 +198,21 @@ class System():
             for d in range(len(df)):
                 self.__data[d] = ctdms(df[d])
                 if self.get_name()[:3] == "mic":
-                    self.__data[d].set_collection("Y")
+                    self.__data[d].set_collection("Y", tmin = tmin, tmax = tmax)
                     if mic_correct:
                         self.__data[d].apply("correct", response = mic_response, recollect = True)
                 else:
-                    self.__data[d].set_collection("X")
+                    self.__data[d].set_collection("X", tmin = tmin, tmax = tmax)
                     if self.get_name()[:] == "sagnac":
                         self.__data[d].apply("calibrate", cal = -1, inplace = True)
         else:
             self.__data[ind] = ctdms(self.get_df()[ind])
             if self.get_name()[:3] == "mic":
-                self.__data[ind].set_collection("Y")
+                self.__data[ind].set_collection("Y", tmin = tmin, tmax = tmax)
                 if mic_correct:
                     self.__data[ind].apply("correct", response = mic_response, recollect = True)
             else:
-                self.__data[ind].set_collection("X")
+                self.__data[ind].set_collection("X", tmin = tmin, tmax = tmax)
                 if self.get_name()[:] == "sagnac":
                     self.__data[ind].apply("calibrate", cal = -1, inplace = True)
         return None
@@ -302,14 +301,12 @@ class System():
             d = self.get_data()[index]
             for c in d.collection:
                 t, x = c.time_gate(tmin = tmin, tmax = tmax)
-                x_bar = np.mean(x)
                 m, b = np.polyfit(t, x, 1)
                 if inplace:
                     c.x = c.x - (m * c.t) - b
         else:
             for c in col.collection:
                 t, x = c.time_gate(tmin = tmin, tmax = tmax)
-                x_bar = np.mean(x)
                 m, b = np.polyfit(t, x, 1)
                 if inplace:
                     c.x = c.x - (m * c.t) - b
