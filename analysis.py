@@ -32,7 +32,7 @@ def mic_correct(c, taps = 151, lfs = 0.68e-3) -> (list, list):
     filter = np.real(np.fft.ifft(1 / np.fft.fft(sig.minimum_phase(sig.firwin2(taps, np.r_[0, acoustic_entrainment.fs_orig], np.r_[0, gains], fs = 2 * acoustic_entrainment.fs_orig[-1])))))
     return c.t, sig.filtfilt(filter, [1], c.x)
 
-def calc_cal_factor(l_col, m_col, deviation):
+def calc_cal_factor(l_col, m_col, deviation, m_mn = 3.5e-4, m_mx = 5e-4, l_mn = 4.4e-4, l_mx = 4.6e-4):
     """
     
     calc_cal_factor calculates the calibration factor for an individual
@@ -47,7 +47,7 @@ def calc_cal_factor(l_col, m_col, deviation):
     """
     def find_nearest(array, value):
         return (np.abs(np.asarray(array) - value)).argmin()
-    m_trough = np.where(m_col.x == min(m_col.time_gate(tmin = 3.5e-4, tmax = 5e-4)[1]))[0][0]
+    m_trough = np.where(m_col.x == min(m_col.time_gate(tmin = m_mn, tmax = m_mx)[1]))[0][0]
     l_trough = find_nearest(l_col.t, m_col.t[m_trough])
     if deviation != 0:
         return np.mean(m_col.x[m_trough - deviation : m_trough + deviation] / l_col.x[l_trough - deviation : l_trough + deviation])
@@ -62,24 +62,28 @@ def calc_calibration_factors(laser, mic, dat_i):
         mic.get_data()[dat_i].apply("shift", tau = -t, inplace = True)
     return cals
 
-def mic_tau_shift(s1, s2, dat_i, col_i) -> float: 
+def mic_tau_shift(s1, s2, dat_i, col_i, m_mn = 3.5e-4, m_mx = 5e-4, l_mn = 4.4e-4, l_mx = 4.6e-4) -> float: 
     # assuming s1 will always be laser and s2 will always be microphone
     # also assume that the data will be preprocessed at this point:
     # - the data must already be detrended
     # - the data doesn't have to be lowpassed or bin_averaged, but it can be beforehand
-    x0 = []
-    for s in [s1, s2]:
-        c = s.get_data()[dat_i].collection[col_i]
-        if s.get_name()[:3] == "mic":
-            mx = c.t[np.where(c.x == np.max(c.time_gate(tmin = 3.5e-4, tmax = 5e-4)[1]))[0][0]]
-            mn = c.t[np.where(c.x == np.min(c.time_gate(tmin = 3.5e-4, tmax = 5e-4)[1]))[0][0]]
-        else:
-            mx = c.t[np.where(c.x == np.max(c.time_gate(tmin = 4.4e-4, tmax = 4.6e-4)[1]))[0][0]]
-            mn = c.t[np.where(c.x == np.min(c.time_gate(tmin = 4.4e-4, tmax = 4.6e-4)[1]))[0][0]]
-        x = [c.time_gate(tmin = mx, tmax = mn)[0][np.where(np.diff(np.sign(c.time_gate(tmin = mx, tmax = mn)[1])))[0][0]], c.time_gate(tmin = mx, tmax = mn)[0][np.where(np.diff(np.sign(c.time_gate(tmin = mx, tmax = mn)[1])))[0][0] + 1]]
-        y = [c.x[np.where(c.t == x[0])[0][0]], c.x[np.where(c.t == x[1])[0][0]]]
-        x0.append(x[0] - y[0] * ((x[1] - x[0]) / (y[1] - y[0])))
-    return x0[1] - x0[0]
+    try:
+        x0 = []
+        for s in [s1, s2]:
+            c = s.get_data()[dat_i].collection[col_i]
+            if s.get_name()[:3] == "mic":
+                mn = c.t[np.where(c.x == np.min(c.time_gate(tmin = m_mn, tmax = m_mx)[1]))[0][0]]
+                mx = c.t[np.where(c.x == np.max(c.time_gate(tmin = m_mn, tmax = mn)[1]))[0][0]]
+            else:
+                mn = c.t[np.where(c.x == np.min(c.time_gate(tmin = l_mn, tmax = l_mx)[1]))[0][0]]
+                mx = c.t[np.where(c.x == np.max(c.time_gate(tmin = l_mn, tmax = mn)[1]))[0][0]]
+            x = [c.time_gate(tmin = mx, tmax = mn)[0][np.where(np.diff(np.sign(c.time_gate(tmin = mx, tmax = mn)[1])))[0][0]], c.time_gate(tmin = mx, tmax = mn)[0][np.where(np.diff(np.sign(c.time_gate(tmin = mx, tmax = mn)[1])))[0][0] + 1]]
+            y = [c.x[np.where(c.t == x[0])[0][0]], c.x[np.where(c.t == x[1])[0][0]]]
+            x0.append(x[0] - y[0] * ((x[1] - x[0]) / (y[1] - y[0])))
+        return x0[1] - x0[0]
+    except:
+        print("Tau failed at index", col_i, "in data set #", str(dat_i) + "!")
+        return 0
 
 def graph_systems(systems = [], title = "", save = False) -> None:
     import matplotlib.pyplot as plt
@@ -123,15 +127,16 @@ def std_max(N, mu):
 
 class System():
 
-    def __init__(self, name = "", data_files = [], power = 19, SNR_freq_cut = 0, phis = [], SNR_resolution = 10, SNR_freq_range = [10000, 2e6], SNR = False) -> None:
+    def __init__(self, name = "", data_files = [], power = 19, SNR_freq_cut = 0, phis = [], SNR_resolution = 10, SNR_freq_range = [10000, 2e6], SNR = False, channel = "") -> None:
         self.set_name(name)
-        self.set_df(np.array(data_files))
-        self.set_data(self.__df)
         self.set_power(power)
         self.set_phis(phis)
         self.set_SNR_resolution(SNR_resolution)
         self.set_SNR_freq_cutoff(SNR_freq_cut)
         self.set_SNR_freq_range(SNR_freq_range)
+        self.set_channel(channel)
+        self.set_df(np.array(data_files))
+        self.set_data(self.get_df())
         if SNR:
             self.set_SNR_at_cutoff(self.calc_SNR_at_cutoff(bins = True, lowpass = True))
         self.reset_SNR_vs_freq()
@@ -156,6 +161,27 @@ class System():
         self.__name = n
         return None
 
+    def set_channel(self, ch) -> None:
+        """
+        
+        set_channel sets the name of the channel in the ctdms object.
+        :param ch: channel name, if provided, should be "X" or "Y".
+        :return: None.
+        
+        """
+        self.__channel = ch
+        return None
+
+    def get_channel(self) -> str:
+        """
+
+        get_channel gets the name of the channel that was set for
+        the ctdms object or returns a blank str.
+        :return: name of the channel.
+        
+        """
+        return self.__channel
+    
     def get_df(self) -> np.array([]):
         """
         
@@ -197,24 +223,34 @@ class System():
             self.__data = np.empty((len(df), ), dtype=object)
             for d in range(len(df)):
                 self.__data[d] = ctdms(df[d])
-                if self.get_name()[:3] == "mic":
-                    self.__data[d].set_collection("Y", tmin = tmin, tmax = tmax)
-                    if mic_correct:
-                        self.__data[d].apply("correct", response = mic_response, recollect = True)
+                if self.get_channel() == "X":
+                    self.__data[d].set_collection(self.get_channel(), tmin = tmin, tmax = tmax)
+                elif self.get_channel() == "Y":
+                    self.__data[d].set_collection(self.get_channel(), tmin = tmin, tmax = tmax)
                 else:
-                    self.__data[d].set_collection("X", tmin = tmin, tmax = tmax)
-                    if self.get_name()[:] == "sagnac":
-                        self.__data[d].apply("calibrate", cal = -1, inplace = True)
+                    if self.get_name()[:3] == "mic":
+                        self.__data[d].set_collection("Y", tmin = tmin, tmax = tmax)
+                        if mic_correct:
+                            self.__data[d].apply("correct", response = mic_response, recollect = True)
+                    else:
+                        self.__data[d].set_collection("X", tmin = tmin, tmax = tmax)
+                        if self.get_name()[:] == "sagnac":
+                            self.__data[d].apply("calibrate", cal = -1, inplace = True)
         else:
             self.__data[ind] = ctdms(self.get_df()[ind])
-            if self.get_name()[:3] == "mic":
-                self.__data[ind].set_collection("Y", tmin = tmin, tmax = tmax)
-                if mic_correct:
-                    self.__data[ind].apply("correct", response = mic_response, recollect = True)
+            if self.get_channel() == "X":
+                self.__data[d].set_collection(self.get_channel(), tmin = tmin, tmax = tmax)
+            elif self.get_channel() == "Y":
+                self.__data[d].set_collection(self.get_channel(), tmin = tmin, tmax = tmax)
             else:
-                self.__data[ind].set_collection("X", tmin = tmin, tmax = tmax)
-                if self.get_name()[:] == "sagnac":
-                    self.__data[ind].apply("calibrate", cal = -1, inplace = True)
+                if self.get_name()[:3] == "mic":
+                    self.__data[ind].set_collection("Y", tmin = tmin, tmax = tmax)
+                    if mic_correct:
+                        self.__data[ind].apply("correct", response = mic_response, recollect = True)
+                else:
+                    self.__data[ind].set_collection("X", tmin = tmin, tmax = tmax)
+                    if self.get_name()[:] == "sagnac":
+                        self.__data[ind].apply("calibrate", cal = -1, inplace = True)
         return None
 
     def get_power(self) -> int:
@@ -295,9 +331,9 @@ class System():
         """"""
         return self.__SNR_freq_range
 
-    def local_detrend(self, col = [], index = 0, tmin = None, tmax = None, inplace = False) -> None:
+    def local_detrend(self, col = None, index = 0, tmin = None, tmax = None, inplace = False) -> None:
         """"""
-        if col == []:
+        if col == None:
             d = self.get_data()[index]
             for c in d.collection:
                 t, x = c.time_gate(tmin = tmin, tmax = tmax)
@@ -305,11 +341,10 @@ class System():
                 if inplace:
                     c.x = c.x - (m * c.t) - b
         else:
-            for c in col.collection:
-                t, x = c.time_gate(tmin = tmin, tmax = tmax)
-                m, b = np.polyfit(t, x, 1)
-                if inplace:
-                    c.x = c.x - (m * c.t) - b
+            t, x = col.time_gate(tmin = tmin, tmax = tmax)
+            m, b = np.polyfit(t, x, 1)
+            if inplace:
+                col.x = col.x - (m * col.t) - b
         return None
 
     def reset_SNR_at_cutoff(self) -> None:
