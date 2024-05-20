@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.animation import FuncAnimation
 particles = [pd.DataFrame({"P.X": [], "P.Y": [], "V.X": [], "V.Y": []}) for i in range(100)]
-data = "../results.csv"
+data = "results.csv"
 with open(data, newline = "\n") as f:
     reader = csv.reader(f, delimiter = ",")
     for row in reader:
