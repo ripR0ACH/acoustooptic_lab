@@ -5,6 +5,7 @@ import sys
 import time
 import threading
 sys.path[:0] = ["/home/fat-aunt-betty/github.com/lhillber/brownian/src"]
+sys.path[:0] = ["/home/weird-uncle-charles/github.com/lhillber/brownian/src"]
 from time_series import CollectionTDMS as ctdms
 from acoustic_entrainment import mic_response
 
