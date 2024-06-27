@@ -2,14 +2,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.special import erfinv
 import sys
-import time
-import threading
-sys.path[:0] = ["/home/fat-aunt-betty/github.com/lhillber/brownian/src"]
-sys.path[:0] = ["/home/weird-uncle-charles/github.com/lhillber/brownian/src"]
+sys.path[:0] = ["/home/fat-aunt-betty/github.com/lhillber/brownian/src", "/home/weird-uncle-charles/github.com/lhillber/brownian/src"]
 from time_series import CollectionTDMS as ctdms
 from acoustic_entrainment import mic_response
 
-def mic_correct(c, taps = 151, lfs = 0.68e-3) -> (list, list):
+def mic_correct(c, taps = 151, lfs = 0.68e-3) -> tuple:
     """
     mic_correct uses the impulse response function of the microphone
     to correct the signal using a digital filter (scipy.signal.filtfilt).
@@ -30,10 +27,10 @@ def mic_correct(c, taps = 151, lfs = 0.68e-3) -> (list, list):
     # 4th value is the maximum frequency times two
     # this filter is also converted into a minimum phase filter (sig.minimum_phase)
     # lastly, the filter is translated into its inverse using ifft and 1 / fft
-    filter = np.real(np.fft.ifft(1 / np.fft.fft(sig.minimum_phase(sig.firwin2(taps, np.r_[0, acoustic_entrainment.fs_orig], np.r_[0, gains], fs = 2 * acoustic_entrainment.fs_orig[-1])))))
-    return c.t, sig.filtfilt(filter, [1], c.x)
+    filt = np.real(np.fft.ifft(1 / np.fft.fft(sig.minimum_phase(sig.firwin2(taps, np.r_[0, acoustic_entrainment.fs_orig], np.r_[0, gains], fs = 2 * acoustic_entrainment.fs_orig[-1])))))
+    return c.t, sig.filtfilt(filt, [1], c.x)
 
-def calc_cal_factor(l_col, m_col, deviation, m_mn = 3.5e-4, m_mx = 5e-4, l_mn = 4.4e-4, l_mx = 4.6e-4):
+def calc_cal_factor(l_col, m_col, deviation, m_mn = 3.5e-4, m_mx = 5e-4):
     """
     
     calc_cal_factor calculates the calibration factor for an individual
@@ -48,7 +45,7 @@ def calc_cal_factor(l_col, m_col, deviation, m_mn = 3.5e-4, m_mx = 5e-4, l_mn = 
     """
     def find_nearest(array, value):
         return (np.abs(np.asarray(array) - value)).argmin()
-    m_trough = np.where(m_col.x == min(m_col.time_gate(tmin = m_mn, tmax = m_mx)[1]))[0][0]
+    m_trough = np.nonzero(m_col.x == min(m_col.time_gate(tmin = m_mn, tmax = m_mx)[1]))[0][0]
     l_trough = find_nearest(l_col.t, m_col.t[m_trough])
     if deviation != 0:
         return np.mean(m_col.x[m_trough - deviation : m_trough + deviation] / l_col.x[l_trough - deviation : l_trough + deviation])
@@ -72,17 +69,17 @@ def mic_tau_shift(s1, s2, dat_i, col_i, m_mn = 3.5e-4, m_mx = 5e-4, l_mn = 4.4e-
         x0 = []
         for s in [s1, s2]:
             c = s.get_data()[dat_i].collection[col_i]
-            if s.get_name()[:3] == "mic":
-                mn = c.t[np.where(c.x == np.min(c.time_gate(tmin = m_mn, tmax = m_mx)[1]))[0][0]]
-                mx = c.t[np.where(c.x == np.max(c.time_gate(tmin = m_mn, tmax = mn)[1]))[0][0]]
+            if s.get_name().startswith("mic"):
+                mn = c.t[np.nonzero(c.x == np.min(c.time_gate(tmin = m_mn, tmax = m_mx)[1]))[0][0]]
+                mx = c.t[np.nonzero(c.x == np.max(c.time_gate(tmin = m_mn, tmax = mn)[1]))[0][0]]
             else:
-                mn = c.t[np.where(c.x == np.min(c.time_gate(tmin = l_mn, tmax = l_mx)[1]))[0][0]]
-                mx = c.t[np.where(c.x == np.max(c.time_gate(tmin = l_mn, tmax = mn)[1]))[0][0]]
-            x = [c.time_gate(tmin = mx, tmax = mn)[0][np.where(np.diff(np.sign(c.time_gate(tmin = mx, tmax = mn)[1])))[0][0]], c.time_gate(tmin = mx, tmax = mn)[0][np.where(np.diff(np.sign(c.time_gate(tmin = mx, tmax = mn)[1])))[0][0] + 1]]
-            y = [c.x[np.where(c.t == x[0])[0][0]], c.x[np.where(c.t == x[1])[0][0]]]
+                mn = c.t[np.nonzero(c.x == np.min(c.time_gate(tmin = l_mn, tmax = l_mx)[1]))[0][0]]
+                mx = c.t[np.nonzero(c.x == np.max(c.time_gate(tmin = l_mn, tmax = mn)[1]))[0][0]]
+            x = [c.time_gate(tmin = mx, tmax = mn)[0][np.nonzero(np.diff(np.sign(c.time_gate(tmin = mx, tmax = mn)[1])))[0][0]], c.time_gate(tmin = mx, tmax = mn)[0][np.nonzero(np.diff(np.sign(c.time_gate(tmin = mx, tmax = mn)[1])))[0][0] + 1]]
+            y = [c.x[np.nonzero(c.t == x[0])[0][0]], c.x[np.nonzero(c.t == x[1])[0][0]]]
             x0.append(x[0] - y[0] * ((x[1] - x[0]) / (y[1] - y[0])))
         return x0[1] - x0[0]
-    except:
+    except IndexError:
         print("Tau failed at index", col_i, "in data set #", str(dat_i) + "!")
         return 0
 
@@ -93,16 +90,16 @@ def graph_systems(systems = [], title = "", save = False) -> None:
     for s in systems:
         ax = ax.flatten()
         fig.suptitle("setups vs frequency (strong shot and phi 82-160)")
-        for i in range(len(s.get_SNR_vs_freq()[0])):
+        for i in range(len(s.get_snr_vs_freq()[0])):
             if i == 0:
                 ax[i].set_title("Strong shot")
-                ax[i].plot(s.get_SNR_freq_range(), s.get_SNR_vs_freq()[:, i], label = s.get_name())
-                ax[i].set_ylabel("SNR")
+                ax[i].plot(s.get_snr_freq_range(), s.get_snr_vs_freq()[:, i], label = s.get_name())
+                ax[i].set_ylabel("snr")
                 ax[i].set_xlabel("frequency")
             else:
                 ax[i].set_title("Phi " + str(s.get_phis()[i - 1]))
-                ax[i].plot(s.get_SNR_freq_range(), s.get_SNR_vs_freq()[:, i], label = s.get_name())
-                ax[i].set_ylabel("SNR")
+                ax[i].plot(s.get_snr_freq_range(), s.get_snr_vs_freq()[:, i], label = s.get_name())
+                ax[i].set_ylabel("snr")
                 ax[i].set_xlabel("frequency")
     fig.tight_layout(pad = 1.5)
     ax[0].legend()
@@ -114,33 +111,33 @@ def graph_systems(systems = [], title = "", save = False) -> None:
 def phi(p):
     return np.sqrt(2) * erfinv(2 * p - 1)
 
-def expected_max(N):
-    mun = phi(1 - 1 / N)
-    sigman = phi(1 - 1 / (N * np.e)) - mun
+def expected_max(n):
+    mun = phi(1 - 1 / n)
+    sigman = phi(1 - 1 / (n * np.e)) - mun
     return mun + sigman * 0.577
     
 
-def std_max(N, mu):
-    mun = phi(1 - 1 / N) + mu
-    sigman = phi(1 - 1 / (N * np.e)) - mun
+def std_max(n, mu):
+    mun = phi(1 - 1 / n) + mu
+    sigman = phi(1 - 1 / (n * np.e)) - mun
     return sigman * np.pi * np.sqrt(1/6)
     
 
 class System():
 
-    def __init__(self, name = "", data_files = [], power = 19, SNR_freq_cut = 0, phis = [], SNR_resolution = 10, SNR_freq_range = [10000, 2e6], SNR = False, channel = "") -> None:
+    def __init__(self, name = "", data_files = [], power = 19, snr_freq_cut = 0, phis = [], snr_resolution = 10, snr_freq_range = [10000, 2e6], snr = False, channel = "") -> None:
         self.set_name(name)
         self.set_power(power)
         self.set_phis(phis)
-        self.set_SNR_resolution(SNR_resolution)
-        self.set_SNR_freq_cutoff(SNR_freq_cut)
-        self.set_SNR_freq_range(SNR_freq_range)
+        self.set_snr_resolution(snr_resolution)
+        self.set_snr_freq_cutoff(snr_freq_cut)
+        self.set_snr_freq_range(snr_freq_range)
         self.set_channel(channel)
         self.set_df(np.array(data_files))
         self.set_data(self.get_df())
-        if SNR:
-            self.set_SNR_at_cutoff(self.calc_SNR_at_cutoff(bins = True, lowpass = True))
-        self.reset_SNR_vs_freq()
+        if snr:
+            self.set_snr_at_cutoff(self.calc_snr_at_cutoff(bins = True, lowpass = True))
+        self.reset_snr_vs_freq()
 
     def get_name(self) -> str:
         """
@@ -183,7 +180,7 @@ class System():
         """
         return self.__channel
     
-    def get_df(self) -> np.array([]):
+    def get_df(self) -> np.typing.NDArray:
         """
         
         get_df gets the list of data files that the system has.
@@ -203,7 +200,7 @@ class System():
         self.__df = df
         return None
 
-    def get_data(self) -> np.array([]):
+    def get_data(self) -> np.typing.NDArray:
         """
         
         get_data gets the data collections for the system.
@@ -229,7 +226,7 @@ class System():
                 elif self.get_channel() == "Y":
                     self.__data[d].set_collection(self.get_channel(), tmin = tmin, tmax = tmax)
                 else:
-                    if self.get_name()[:3] == "mic":
+                    if self.get_name().startswith("mic"):
                         self.__data[d].set_collection("Y", tmin = tmin, tmax = tmax)
                         if mic_correct:
                             self.__data[d].apply("correct", response = mic_response, recollect = True)
@@ -244,7 +241,7 @@ class System():
             elif self.get_channel() == "Y":
                 self.__data[ind].set_collection(self.get_channel(), tmin = tmin, tmax = tmax)
             else:
-                if self.get_name()[:3] == "mic":
+                if self.get_name().startswith("mic"):
                     self.__data[ind].set_collection("Y", tmin = tmin, tmax = tmax)
                     if mic_correct:
                         self.__data[ind].apply("correct", response = mic_response, recollect = True)
@@ -274,24 +271,24 @@ class System():
         self.__power = p
         return None
 
-    def get_SNR_freq_cutoff(self) -> float:
+    def get_snr_freq_cutoff(self) -> float:
         """
         
-        get_SNR_freq_cutoffs gets the frequency cutoff.
+        get_snr_freq_cutoffs gets the frequency cutoff.
         :return: tuple containing the starting and ending frequency of the cutoffs.
         
         """
-        return self.__SNR_freq_cutoff
+        return self.__snr_freq_cutoff
 
-    def set_SNR_freq_cutoff(self, freq) -> None:
+    def set_snr_freq_cutoff(self, freq) -> None:
         """
         
-        set_SNR_freq_cutoffs sets the frequency cutoffs range.
-        :freqs: frequency cutoff that the SNR will be run at.
+        set_snr_freq_cutoffs sets the frequency cutoffs range.
+        :freqs: frequency cutoff that the snr will be run at.
         :return: None.
         
         """
-        self.__SNR_freq_cutoff = freq
+        self.__snr_freq_cutoff = freq
         return None
 
     def get_phis(self) -> list:
@@ -315,22 +312,22 @@ class System():
         return None
 
     # add comments for these functions down!
-    def set_SNR_resolution(self, res) -> None:
+    def set_snr_resolution(self, res) -> None:
         """"""
-        self.__SNR_res = res
+        self.__snr_res = res
         return None
 
-    def get_SNR_resolution(self) -> int:
+    def get_snr_resolution(self) -> int:
         """"""
-        return self.__SNR_res
+        return self.__snr_res
         
-    def set_SNR_freq_range(self, ran) -> None:
+    def set_snr_freq_range(self, ran) -> None:
         """"""
-        self.__SNR_freq_range = np.linspace(ran[0], ran[1], self.get_SNR_resolution())
+        self.__snr_freq_range = np.linspace(ran[0], ran[1], self.get_snr_resolution())
         return None
-    def get_SNR_freq_range(self) -> list:
+    def get_snr_freq_range(self) -> list:
         """"""
-        return self.__SNR_freq_range
+        return self.__snr_freq_range
 
     def local_detrend(self, col = None, index = 0, tmin = None, tmax = None, inplace = False) -> None:
         """"""
@@ -348,14 +345,14 @@ class System():
                 col.x = col.x - (m * col.t) - b
         return None
 
-    def reset_SNR_at_cutoff(self) -> None:
+    def reset_snr_at_cutoff(self) -> None:
         """"""
-        self.__SNR_at_cutoff = []
+        self.__snr_at_cutoff = []
         return None
-    def calc_SNR_at_cutoff(self, f = 0, bins = False, lowpass = False) -> np.array([]):
+    def calc_snr_at_cutoff(self, f = 0, bins = False, lowpass = False) -> np.typing.NDArray:
         """"""
         if f == 0:
-            f = self.get_SNR_freq_cutoff()
+            f = self.get_snr_freq_cutoff()
         snr = []
         for i in range(len(self.__data)):
             if lowpass and bins:
@@ -374,28 +371,28 @@ class System():
             snr.append(np.mean(peaks / (rms * expected_max(len(s.time_gate(tmin = 2e-4, tmax = 3.5e-4)[1])))))
             self.set_data(ind = i)
         return snr
-    def set_SNR_at_cutoff(self, snr) -> None:
+    def set_snr_at_cutoff(self, snr) -> None:
         """"""
-        self.__SNR_at_cutoff = snr
+        self.__snr_at_cutoff = snr
         return None
-    def get_SNR_at_cutoff(self) -> list:
+    def get_snr_at_cutoff(self) -> list:
         """"""
-        return self.__SNR_at_cutoff
+        return self.__snr_at_cutoff
 
-    def reset_SNR_vs_freq(self) -> None:
+    def reset_snr_vs_freq(self) -> None:
         """"""
-        self.__SNR_vs_freq = []
+        self.__snr_vs_freq = []
         return None
-    def calc_SNR_vs_freq(self, freq = [0, 0], bins = False, lowpass = False) -> None:
+    def calc_snr_vs_freq(self, freq = [0, 0], bins = False, lowpass = False) -> None:
         """"""
         if freq[0] == 0 and freq[1] == 0:
-            freq = self.get_SNR_freq_range()
+            freq = self.get_snr_freq_range()
         else:
-            freq = np.linspace(freq[0], freq[1], self.get_SNR_resolution())
+            freq = np.linspace(freq[0], freq[1], self.get_snr_resolution())
         for i in range(len(freq)):
-            self.__SNR_vs_freq.append(self.calc_SNR_at_cutoff(freq[i], bins, lowpass))
-        self.__SNR_vs_freq = np.array(self.__SNR_vs_freq)
+            self.__snr_vs_freq.append(self.calc_snr_at_cutoff(freq[i], bins, lowpass))
+        self.__snr_vs_freq = np.array(self.__snr_vs_freq)
         return None
-    def get_SNR_vs_freq(self) -> np.array([]):
+    def get_snr_vs_freq(self) -> np.typing.NDArray:
         """"""
-        return self.__SNR_vs_freq
+        return self.__snr_vs_freq
