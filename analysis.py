@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 from scipy.special import erfinv
 import sys
 sys.path[:0] = ["/home/fat-aunt-betty/github.com/lhillber/brownian/src", "/home/weird-uncle-charles/github.com/lhillber/brownian/src"]
@@ -134,7 +135,7 @@ class System():
         self.set_snr_freq_range(snr_freq_range)
         self.set_channel(channel)
         self.set_df(np.array(data_files))
-        self.set_data(self.get_df())
+        self.set_data()
         if snr:
             self.set_snr_at_cutoff(self.calc_snr_at_cutoff(bins = True, lowpass = True))
         self.reset_snr_vs_freq()
@@ -180,7 +181,7 @@ class System():
         """
         return self.__channel
     
-    def get_df(self) -> np.typing.NDArray:
+    def get_df(self) -> npt.NDArray:
         """
         
         get_df gets the list of data files that the system has.
@@ -200,7 +201,7 @@ class System():
         self.__df = df
         return None
 
-    def get_data(self) -> np.typing.NDArray:
+    def get_data(self) -> npt.NDArray:
         """
         
         get_data gets the data collections for the system.
@@ -209,7 +210,7 @@ class System():
         """
         return self.__data
 
-    def set_data(self, df = [], ind = 0, mic_correct = False, tmin = None, tmax = None) -> None:
+    def set_data(self, df = [], ind = -1, mic_correct = False, tmin = None, tmax = None) -> None:
         """
         
         set_data sets the data collections for every data file provided for the system.
@@ -234,6 +235,8 @@ class System():
                         self.__data[d].set_collection("X", tmin = tmin, tmax = tmax)
                         if self.get_name()[:] == "sagnac":
                             self.__data[d].apply("calibrate", cal = -1, inplace = True)
+        elif len(df) == 0 and ind == -1:
+            self.__data = np.empty((len(self.get_df()), ), dtype=object)
         else:
             self.__data[ind] = ctdms(self.get_df()[ind])
             if self.get_channel() == "X":
@@ -349,7 +352,7 @@ class System():
         """"""
         self.__snr_at_cutoff = []
         return None
-    def calc_snr_at_cutoff(self, f = 0, bins = False, lowpass = False) -> np.typing.NDArray:
+    def calc_snr_at_cutoff(self, f = 0, bins = False, lowpass = False) -> npt.NDArray:
         """"""
         if f == 0:
             f = self.get_snr_freq_cutoff()
@@ -393,6 +396,6 @@ class System():
             self.__snr_vs_freq.append(self.calc_snr_at_cutoff(freq[i], bins, lowpass))
         self.__snr_vs_freq = np.array(self.__snr_vs_freq)
         return None
-    def get_snr_vs_freq(self) -> np.typing.NDArray:
+    def get_snr_vs_freq(self) -> npt.NDArray:
         """"""
         return self.__snr_vs_freq
