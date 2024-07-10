@@ -1,7 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import numpy.typing as npt
-from scipy.special import erfinv
 import sys
 sys.path[:0] = ["/home/fat-aunt-betty/github.com/lhillber/brownian/src", "/home/weird-uncle-charles/github.com/lhillber/brownian/src"]
 from time_series import CollectionTDMS as ctdms
@@ -110,6 +108,7 @@ def graph_systems(systems = [], title = "", save = False) -> None:
     return None
 
 def phi(p):
+    from scipy.special import erfinv
     return np.sqrt(2) * erfinv(2 * p - 1)
 
 def expected_max(n):
@@ -126,7 +125,7 @@ def std_max(n, mu):
 
 class System():
 
-    def __init__(self, name = "", data_files = [], power = 19, snr_freq_cut = 0, phis = [], snr_resolution = 10, snr_freq_range = [10000, 2e6], snr = False, channel = "") -> None:
+    def __init__(self, name = "", data_files = [], power = 19, snr_freq_cut = 0, phis = [], snr_resolution = 10, snr_freq_range = [1e4, 2e6], channel = "") -> None:
         self.set_name(name)
         self.set_power(power)
         self.set_phis(phis)
@@ -136,9 +135,6 @@ class System():
         self.set_channel(channel)
         self.set_df(np.array(data_files))
         self.set_data()
-        if snr:
-            self.set_snr_at_cutoff(self.calc_snr_at_cutoff(bins = True, lowpass = True))
-        self.reset_snr_vs_freq()
 
     def get_name(self) -> str:
         """
@@ -181,7 +177,7 @@ class System():
         """
         return self.__channel
     
-    def get_df(self) -> npt.NDArray:
+    def get_df(self) -> np.typing.NDArray:
         """
         
         get_df gets the list of data files that the system has.
@@ -201,7 +197,7 @@ class System():
         self.__df = df
         return None
 
-    def get_data(self) -> npt.NDArray:
+    def get_data(self) -> np.typing.NDArray:
         """
         
         get_data gets the data collections for the system.
@@ -253,6 +249,7 @@ class System():
                     if self.get_name()[:] == "sagnac":
                         self.__data[ind].apply("calibrate", cal = -1, inplace = True)
         return None
+
 
     def get_power(self) -> int:
         """
@@ -326,76 +323,58 @@ class System():
         
     def set_snr_freq_range(self, ran) -> None:
         """"""
-        self.__snr_freq_range = np.linspace(ran[0], ran[1], self.get_snr_resolution())
+        self.__snr_freq_range = ran
         return None
     def get_snr_freq_range(self) -> list:
         """"""
         return self.__snr_freq_range
-
-    def local_detrend(self, col = None, index = 0, tmin = None, tmax = None, inplace = False) -> None:
+    def calc_snr_at_cutoff(self, i, f, signal = (0, 0), noise = (0, 0), bins = False) -> float:
         """"""
-        if col == None:
-            d = self.get_data()[index]
-            for c in d.collection:
-                t, x = c.time_gate(tmin = tmin, tmax = tmax)
-                m, b = np.polyfit(t, x, 1)
-                if inplace:
-                    c.x = c.x - (m * c.t) - b
-        else:
-            t, x = col.time_gate(tmin = tmin, tmax = tmax)
-            m, b = np.polyfit(t, x, 1)
-            if inplace:
-                col.x = col.x - (m * col.t) - b
-        return None
-
-    def reset_snr_at_cutoff(self) -> None:
-        """"""
-        self.__snr_at_cutoff = []
-        return None
-    def calc_snr_at_cutoff(self, f = 0, bins = False, lowpass = False) -> npt.NDArray:
-        """"""
-        if f == 0:
-            f = self.get_snr_freq_cutoff()
-        snr = []
-        for i in range(len(self.__data)):
-            if lowpass and bins:
-                self.__data[i].apply("lowpass", cutoff = f, inplace = True)
-                self.__data[i].apply("bin_average", Npts = int(self.__data[i].r / (2 * f)), inplace = True)
-            elif bins:
-                self.__data[i].apply("bin_average", Npts = int(self.__data[i].r / (2 * f)), inplace = True)
-            else:
-                self.__data[i].apply("lowpass", cutoff = f, inplace = True)
-            self.local_detrend(col = self.__data[i], tmin = 0, tmax = 3.5e-4, inplace = True)
-            peaks = np.array([])
-            rms = np.array([])
-            for s in self.__data[i].collection[1:]:
-                peaks = np.append(peaks, np.abs(max(s.time_gate(tmin = 3.5e-4, tmax = 5e-4)[1])))
-                rms = np.append(rms, np.std(s.time_gate(tmin = 2e-4, tmax = 3.5e-4)[1]))
-            snr.append(np.mean(peaks / (rms * expected_max(len(s.time_gate(tmin = 2e-4, tmax = 3.5e-4)[1])))))
-            self.set_data(ind = i)
+        self.__data[i].apply("lowpass", cutoff = f, inplace = True)
+        if bins:
+            self.__data[i].apply("bin_average", Npts = int(self.__data[i].r / (2 * f)), inplace = True)
+        peaks = np.array([])
+        rms = np.array([])
+        for s in self.__data[i].collection[1:]:
+            peaks = np.append(peaks, np.max(np.abs(s.time_gate(tmin = signal[0], tmax = signal[1])[1])))
+            rms = np.append(rms, np.std(s.time_gate(tmin = noise[0], tmax = noise[1])[1]))
+        snr = np.mean(peaks / (rms * expected_max(len(s.time_gate(tmin = noise[0], tmax = noise[1])[0]))))
+        self.set_data(ind = i)
         return snr
-    def set_snr_at_cutoff(self, snr) -> None:
+    
+    def set_snr_vs_freq(self, snr = np.array([]), i = -1) -> None:
         """"""
-        self.__snr_at_cutoff = snr
+        if len(snr) == 0:
+            self.__snr_vs_freq = [np.array([], dtype = float) for x in range(len(self.get_data()))]
+            return None
+        elif i != -1:
+            self.__snr_vs_freq[i] = np.append(self.__snr_vs_freq[i], snr)
+            return None
+        self.__snr_vs_freq = snr
         return None
-    def get_snr_at_cutoff(self) -> list:
-        """"""
-        return self.__snr_at_cutoff
-
+    
     def reset_snr_vs_freq(self) -> None:
         """"""
-        self.__snr_vs_freq = []
+        self.__snr_vs_freq = [np.array([], dtype = float) for x in range(len(self.get_data()))]
         return None
-    def calc_snr_vs_freq(self, freq = [0, 0], bins = False, lowpass = False) -> None:
+
+    def calc_snr_vs_freq(self, j = -1, freq = [0, 0], signal = (0, 0), noise = (0, 0), bins = False) -> np.typing.NDArray:
         """"""
+        snr = np.array([])
         if freq[0] == 0 and freq[1] == 0:
-            freq = self.get_snr_freq_range()
+            freq = np.linspace(*self.get_snr_freq_range(), self.get_snr_resolution())
         else:
             freq = np.linspace(freq[0], freq[1], self.get_snr_resolution())
-        for i in range(len(freq)):
-            self.__snr_vs_freq.append(self.calc_snr_at_cutoff(freq[i], bins, lowpass))
-        self.__snr_vs_freq = np.array(self.__snr_vs_freq)
-        return None
-    def get_snr_vs_freq(self) -> npt.NDArray:
+        if j != -1:
+            for i in range(len(freq)):
+                snr = np.append(snr, self.calc_snr_at_cutoff(j, freq[i], signal, noise, bins))
+            return snr
+        else:
+            for k in range(len(self.get_data())):
+                for i in range(len(freq)):
+                    snr = np.append(snr, self.calc_snr_at_cutoff(k, freq[i], signal, noise, bins))
+            return snr
+    
+    def get_snr_vs_freq(self) -> np.typing.NDArray:
         """"""
         return self.__snr_vs_freq
