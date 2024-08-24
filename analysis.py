@@ -125,7 +125,7 @@ def std_max(n, mu):
 
 class System():
 
-    def __init__(self, name = "", data_files = [], power = 19, snr_freq_cut = 0, phis = [], snr_resolution = 10, snr_freq_range = [1e4, 2e6], channel = "") -> None:
+    def __init__(self, name = "", data_files = [], power = 19, snr_freq_cut = 0, phis = [], snr_resolution = 10, snr_freq_range = [1e4, 2e6], channel = "", set_data = False) -> None:
         self.set_name(name)
         self.set_power(power)
         self.set_phis(phis)
@@ -134,7 +134,11 @@ class System():
         self.set_snr_freq_range(snr_freq_range)
         self.set_channel(channel)
         self.set_df(np.array(data_files))
+        if set_data:
+            self.set_data(self.get_df())
+            return
         self.set_data()
+        return
 
     def get_name(self) -> str:
         """
@@ -328,14 +332,26 @@ class System():
     def get_snr_freq_range(self) -> list:
         """"""
         return self.__snr_freq_range
+    
+    def calc_snr_of_collection_at_cutoff(self, ind, col, f, signal = (0, 0), noise = (0, 0), bins = False) -> float:
+        self.__data[ind].apply("detrend", mode = "constant", inplace = True)
+        self.__data[ind].apply("lowpass", cutoff = f, inplace = True)
+        if bins:
+            self.__data[ind].apply("bin_average", Npts = int(self.__data[ind].r / (2 * f)), inplace = True)
+        peak = np.max(np.abs(self.__data[ind].collection[col].time_gate(tmin = signal[0], tmax = signal[1])[1]))
+        rms = (expected_max(len(self.__data[ind].collection[col].time_gate(tmin = noise[0], tmax = noise[1])[0])) * np.std(self.__data[ind].collection[col].time_gate(tmin = noise[0], tmax = noise[1])[1]))
+        self.set_data(ind = ind)
+        return  peak / rms
+
     def calc_snr_at_cutoff(self, i, f, signal = (0, 0), noise = (0, 0), bins = False) -> float:
         """"""
+        self.__data[i].apply("detrend", mode = "constant", inplace = True)
         self.__data[i].apply("lowpass", cutoff = f, inplace = True)
         if bins:
             self.__data[i].apply("bin_average", Npts = int(self.__data[i].r / (2 * f)), inplace = True)
         peaks = np.array([])
         rms = np.array([])
-        for s in self.__data[i].collection[1:]:
+        for s in self.__data[i].collection:
             peaks = np.append(peaks, np.max(np.abs(s.time_gate(tmin = signal[0], tmax = signal[1])[1])))
             rms = np.append(rms, np.std(s.time_gate(tmin = noise[0], tmax = noise[1])[1]))
         snr = np.mean(peaks / (rms * expected_max(len(s.time_gate(tmin = noise[0], tmax = noise[1])[0]))))
