@@ -5,7 +5,7 @@ sys.path[:0] = ["/home/fat-aunt-betty/github.com/lhillber/brownian/src", "/home/
 from time_series import CollectionTDMS as ctdms
 from acoustic_entrainment import mic_response
 
-def mic_correct(c, taps = 151, lfs = 0.68e-3) -> tuple:
+def mic_correct(c, taps = 151, lfs = 0.68e-3):
     """
     mic_correct uses the impulse response function of the microphone
     to correct the signal using a digital filter (scipy.signal.filtfilt).
@@ -27,7 +27,7 @@ def mic_correct(c, taps = 151, lfs = 0.68e-3) -> tuple:
     # this filter is also converted into a minimum phase filter (sig.minimum_phase)
     # lastly, the filter is translated into its inverse using ifft and 1 / fft
     filt = np.real(np.fft.ifft(1 / np.fft.fft(sig.minimum_phase(sig.firwin2(taps, np.r_[0, acoustic_entrainment.fs_orig], np.r_[0, gains], fs = 2 * acoustic_entrainment.fs_orig[-1])))))
-    return c.t, sig.filtfilt(filt, [1], c.x)
+    return sig.filtfilt(filt, [1], c.x)
 
 def calc_cal_factor(l_col, m_col, deviation, m_mn = 3.5e-4, m_mx = 5e-4):
     """

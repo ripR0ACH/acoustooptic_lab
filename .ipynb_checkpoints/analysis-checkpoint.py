@@ -5,7 +5,7 @@ sys.path[:0] = ["/home/fat-aunt-betty/github.com/lhillber/brownian/src", "/home/
 from time_series import CollectionTDMS as ctdms
 from acoustic_entrainment import mic_response
 
-def mic_correct(c, taps = 151, lfs = 0.68e-3) -> tuple:
+def mic_correct(c, taps = 151, lfs = 0.68e-3):
     """
     mic_correct uses the impulse response function of the microphone
     to correct the signal using a digital filter (scipy.signal.filtfilt).
@@ -27,7 +27,7 @@ def mic_correct(c, taps = 151, lfs = 0.68e-3) -> tuple:
     # this filter is also converted into a minimum phase filter (sig.minimum_phase)
     # lastly, the filter is translated into its inverse using ifft and 1 / fft
     filt = np.real(np.fft.ifft(1 / np.fft.fft(sig.minimum_phase(sig.firwin2(taps, np.r_[0, acoustic_entrainment.fs_orig], np.r_[0, gains], fs = 2 * acoustic_entrainment.fs_orig[-1])))))
-    return c.t, sig.filtfilt(filt, [1], c.x)
+    return sig.filtfilt(filt, [1], c.x)
 
 def calc_cal_factor(l_col, m_col, deviation, m_mn = 3.5e-4, m_mx = 5e-4):
     """
@@ -125,11 +125,7 @@ def std_max(n, mu):
 
 class System():
 
-<<<<<<< HEAD
-    def __init__(self, name = "", data_files = [], power = 19, snr_freq_cut = 0, phis = [], snr_resolution = 10, snr_freq_range = [1e4, 2e6], channel = "") -> None:
-=======
     def __init__(self, name = "", data_files = [], power = 19, snr_freq_cut = 0, phis = [], snr_resolution = 10, snr_freq_range = [1e4, 2e6], channel = "", set_data = False) -> None:
->>>>>>> 76a6941d0c3e3e0764559614bb7046433b27fb2d
         self.set_name(name)
         self.set_power(power)
         self.set_phis(phis)
@@ -138,15 +134,11 @@ class System():
         self.set_snr_freq_range(snr_freq_range)
         self.set_channel(channel)
         self.set_df(np.array(data_files))
-<<<<<<< HEAD
-        self.set_data()
-=======
         if set_data:
             self.set_data(self.get_df())
             return
         self.set_data()
         return
->>>>>>> 76a6941d0c3e3e0764559614bb7046433b27fb2d
 
     def get_name(self) -> str:
         """
@@ -340,10 +332,6 @@ class System():
     def get_snr_freq_range(self) -> list:
         """"""
         return self.__snr_freq_range
-<<<<<<< HEAD
-    def calc_snr_at_cutoff(self, i, f, signal = (0, 0), noise = (0, 0), bins = False) -> float:
-        """"""
-=======
     
     def calc_snr_of_collection_at_cutoff(self, ind, col, f, signal = (0, 0), noise = (0, 0), bins = False) -> float:
         self.__data[ind].apply("detrend", mode = "constant", inplace = True)
@@ -358,17 +346,12 @@ class System():
     def calc_snr_at_cutoff(self, i, f, signal = (0, 0), noise = (0, 0), bins = False) -> float:
         """"""
         self.__data[i].apply("detrend", mode = "constant", inplace = True)
->>>>>>> 76a6941d0c3e3e0764559614bb7046433b27fb2d
         self.__data[i].apply("lowpass", cutoff = f, inplace = True)
         if bins:
             self.__data[i].apply("bin_average", Npts = int(self.__data[i].r / (2 * f)), inplace = True)
         peaks = np.array([])
         rms = np.array([])
-<<<<<<< HEAD
-        for s in self.__data[i].collection[1:]:
-=======
         for s in self.__data[i].collection:
->>>>>>> 76a6941d0c3e3e0764559614bb7046433b27fb2d
             peaks = np.append(peaks, np.max(np.abs(s.time_gate(tmin = signal[0], tmax = signal[1])[1])))
             rms = np.append(rms, np.std(s.time_gate(tmin = noise[0], tmax = noise[1])[1]))
         snr = np.mean(peaks / (rms * expected_max(len(s.time_gate(tmin = noise[0], tmax = noise[1])[0]))))
